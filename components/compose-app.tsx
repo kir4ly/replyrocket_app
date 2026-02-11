@@ -307,7 +307,7 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
               >
                 <tab.icon className="h-4 w-4" />
                 {tab.label}
-                {tab.count !== undefined && tab.count > 0 && (
+                {'count' in tab && tab.count > 0 && (
                   <Badge
                     variant="secondary"
                     className={`
