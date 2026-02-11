@@ -126,6 +126,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     setIsSubmitting(true);
     try {
       onComplete({
+        email: formData.email,
+        password: formData.password,
         name: formData.handle,
         handle: formData.handle,
         bio: formData.bio,
