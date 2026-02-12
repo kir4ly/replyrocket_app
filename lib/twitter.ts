@@ -7,6 +7,12 @@ const TWITTER_CALLBACK_URL = process.env.NEXT_PUBLIC_URL
   ? `${process.env.NEXT_PUBLIC_URL}/api/twitter/callback`
   : "http://localhost:3000/api/twitter/callback";
 
+// Twitter OAuth 1.0a credentials for media upload
+const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
+const TWITTER_API_SECRET = process.env.TWITTER_API_SECRET;
+const TWITTER_ACCESS_TOKEN = process.env.TWITTER_ACCESS_TOKEN;
+const TWITTER_ACCESS_TOKEN_SECRET = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+
 // Scopes needed for posting tweets
 const SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"];
 
@@ -47,9 +53,42 @@ export function getAuthenticatedClient(accessToken: string) {
   return new TwitterApi(accessToken);
 }
 
-// Post a tweet
-export async function postTweet(accessToken: string, text: string) {
+// Create OAuth 1.0a client for media upload
+export function getOAuth1Client() {
+  if (!TWITTER_API_KEY || !TWITTER_API_SECRET || !TWITTER_ACCESS_TOKEN || !TWITTER_ACCESS_TOKEN_SECRET) {
+    return null;
+  }
+  return new TwitterApi({
+    appKey: TWITTER_API_KEY,
+    appSecret: TWITTER_API_SECRET,
+    accessToken: TWITTER_ACCESS_TOKEN,
+    accessSecret: TWITTER_ACCESS_TOKEN_SECRET,
+  });
+}
+
+// Post a tweet (with optional media)
+export async function postTweet(accessToken: string, text: string, mediaData?: Buffer) {
   const client = getAuthenticatedClient(accessToken);
+
+  if (mediaData) {
+    // Try OAuth 1.0a client for media upload
+    const oauth1Client = getOAuth1Client();
+
+    if (oauth1Client) {
+      try {
+        // Upload media using OAuth 1.0a
+        const mediaId = await oauth1Client.v1.uploadMedia(mediaData, { mimeType: "image/jpeg" });
+        // Post tweet with media using OAuth 2.0
+        return client.v2.tweet(text, { media: { media_ids: [mediaId] } });
+      } catch (mediaError) {
+        console.error("Media upload failed:", mediaError);
+        throw new Error("Failed to upload image. Please try again.");
+      }
+    } else {
+      throw new Error("Image upload requires OAuth 1.0a credentials. Please configure TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET.");
+    }
+  }
+
   return client.v2.tweet(text);
 }
 

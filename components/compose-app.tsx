@@ -1,37 +1,64 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Profile, Tweet } from "@/lib/supabase";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/ui/alert";
+import { Field, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+  SidebarGroup,
+} from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Profile, Tweet, supabase } from "@/lib/supabase";
 import { createTweet, getTweets, deleteTweet, clearTwitterCredentials } from "@/lib/db";
 import {
-  PencilSimpleIcon,
-  FileIcon,
-  CalendarIcon,
-  ClockIcon,
+  Pencil,
+  File,
+  Calendar as CalendarIcon,
+  Clock,
   ImageIcon,
-  GifIcon,
-  HashIcon,
-  ArrowRightIcon,
-  TrashIcon,
-  CheckIcon,
-  CopyIcon,
-  SparkleIcon,
-  PaperPlaneTiltIcon,
-  BookmarkSimpleIcon,
-  LightningIcon,
-  XIcon,
-  XLogoIcon,
-  LinkIcon,
-  CheckCircleIcon,
-  WarningIcon,
-  SignOutIcon,
-} from "@phosphor-icons/react";
+  Hash,
+  ArrowUp,
+  Trash2,
+  Check,
+  Copy,
+  Sparkles,
+  Send,
+  Bookmark,
+  Zap,
+  X,
+  LogOut,
+  ChevronsUpDown,
+  Rocket,
+} from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { Separator } from "@/components/ui/separator";
+import { XLogoIcon } from "@phosphor-icons/react";
+import { toast } from "sonner";
 
 interface ComposeAppProps {
   profile: Profile;
@@ -41,8 +68,12 @@ interface ComposeAppProps {
 export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppProps) {
   const [profile, setProfile] = useState(initialProfile);
   const [tweetContent, setTweetContent] = useState("");
-  const [activeTab, setActiveTab] = useState<"compose" | "drafts" | "scheduled" | "posted">("compose");
+  const [scheduleContent, setScheduleContent] = useState("");
+  const [activeTab, setActiveTab] = useState<"compose" | "drafts" | "scheduling" | "posted">("compose");
   const [aiPrompt, setAiPrompt] = useState("");
+  const [scheduleAiPrompt, setScheduleAiPrompt] = useState("");
+  const [scheduleAiSuggestion, setScheduleAiSuggestion] = useState("");
+  const [isScheduleGenerating, setIsScheduleGenerating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState("");
   const [drafts, setDrafts] = useState<Tweet[]>([]);
@@ -51,19 +82,21 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
   const [isLoading, setIsLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isPosting, setIsPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
-  const [postSuccess, setPostSuccess] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
 
   const isTwitterConnected = !!profile.twitter_access_token;
   const charCount = tweetContent.length;
   const maxChars = 280;
-  const charPercentage = (charCount / maxChars) * 100;
 
   // Check for Twitter connection on mount (from OAuth callback)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("twitter_connected") === "true") {
-      // Refresh profile to get Twitter credentials
       window.location.href = "/";
     }
   }, []);
@@ -71,15 +104,15 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
   const loadTweets = useCallback(async () => {
     try {
       const [draftsData, scheduledData, postedData] = await Promise.all([
-        getTweets(profile.id, "draft"),
-        getTweets(profile.id, "scheduled"),
-        getTweets(profile.id, "posted"),
+        getTweets(profile.id, "draft").catch(() => []),
+        getTweets(profile.id, "scheduled").catch(() => []),
+        getTweets(profile.id, "posted").catch(() => []),
       ]);
       setDrafts(draftsData);
       setScheduled(scheduledData);
       setPosted(postedData);
     } catch (error) {
-      console.error("Failed to load tweets:", error);
+      // Silently fail - tweets table might not exist yet
     } finally {
       setIsLoading(false);
     }
@@ -116,6 +149,7 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
       }
     } catch (error) {
       console.error("Failed to generate:", error);
+      toast.error("Failed to generate tweet. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -125,6 +159,69 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
     setTweetContent(aiSuggestion);
     setAiSuggestion("");
     setAiPrompt("");
+    toast.success("Tweet added to composer!");
+  };
+
+  const generateScheduleAiSuggestion = async () => {
+    if (!scheduleAiPrompt.trim()) return;
+
+    setIsScheduleGenerating(true);
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: scheduleAiPrompt,
+          userProfile: {
+            name: profile.name,
+            handle: profile.handle,
+            bio: profile.bio,
+            tone: profile.tone,
+            topics: profile.topics,
+          },
+          currentDraft: scheduleContent,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.result) {
+        setScheduleAiSuggestion(data.result);
+      }
+    } catch (error) {
+      console.error("Failed to generate:", error);
+    } finally {
+      setIsScheduleGenerating(false);
+    }
+  };
+
+  const useScheduleSuggestion = () => {
+    setScheduleContent(scheduleAiSuggestion);
+    setScheduleAiSuggestion("");
+    setScheduleAiPrompt("");
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Image must be less than 20MB");
+      return;
+    }
+
+    setImageFile(file);
+    const previewUrl = URL.createObjectURL(file);
+    setUploadedImage(previewUrl);
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeImage = () => {
+    if (uploadedImage) {
+      URL.revokeObjectURL(uploadedImage);
+    }
+    setUploadedImage(null);
+    setImageFile(null);
   };
 
   const saveDraft = async () => {
@@ -136,10 +233,13 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
         content: tweetContent,
         status: "draft",
       });
-      setDrafts([newDraft, ...drafts]);
+      setDrafts(prev => [newDraft, ...prev]);
       setTweetContent("");
+      removeImage();
+      toast.success("Draft saved!");
     } catch (error) {
       console.error("Failed to save draft:", error);
+      toast.error("Failed to save draft");
     }
   };
 
@@ -147,11 +247,15 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
     if (!tweetContent.trim()) return;
 
     setIsPosting(true);
-    setPostError(null);
-    setPostSuccess(false);
 
     try {
-      // Post to Twitter if connected
+      // Convert image to base64 if present
+      let imageBase64: string | undefined;
+      if (imageFile) {
+        const arrayBuffer = await imageFile.arrayBuffer();
+        imageBase64 = Buffer.from(arrayBuffer).toString("base64");
+      }
+
       if (isTwitterConnected) {
         const response = await fetch("/api/twitter/post", {
           method: "POST",
@@ -159,6 +263,7 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
           body: JSON.stringify({
             profileId: profile.id,
             content: tweetContent,
+            imageBase64,
           }),
         });
 
@@ -169,7 +274,6 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
         }
       }
 
-      // Save to our database
       const newPost = await createTweet({
         profile_id: profile.id,
         content: tweetContent,
@@ -178,31 +282,96 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
       });
       setPosted([newPost, ...posted]);
       setTweetContent("");
-      setPostSuccess(true);
-      setTimeout(() => setPostSuccess(false), 3000);
+      removeImage();
+      toast.success(isTwitterConnected ? "Posted to X successfully!" : "Tweet saved!");
     } catch (error) {
       console.error("Failed to post tweet:", error);
-      setPostError(error instanceof Error ? error.message : "Failed to post tweet");
-      setTimeout(() => setPostError(null), 5000);
+      toast.error(error instanceof Error ? error.message : "Failed to post tweet");
     } finally {
       setIsPosting(false);
     }
   };
 
+  const scheduleTweet = async (scheduledFor: Date) => {
+    if (!scheduleContent.trim()) return;
+
+    try {
+      const newScheduled = await createTweet({
+        profile_id: profile.id,
+        content: scheduleContent,
+        status: "scheduled",
+        scheduled_for: scheduledFor.toISOString(),
+      });
+      setScheduled(prev => [newScheduled, ...prev]);
+      setScheduleContent("");
+      setScheduleDate(undefined);
+      setScheduleTime("");
+      toast.success("Tweet scheduled successfully!");
+    } catch (error) {
+      console.error("Failed to schedule tweet:", error);
+      toast.error("Failed to schedule tweet");
+    }
+  };
+
+  const handleQuickSchedule = (option: string) => {
+    const now = new Date();
+    let scheduledFor: Date;
+
+    switch (option) {
+      case "1hour":
+        scheduledFor = new Date(now.getTime() + 60 * 60 * 1000);
+        break;
+      case "3hours":
+        scheduledFor = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+        break;
+      case "tomorrow9am":
+        scheduledFor = new Date(now);
+        scheduledFor.setDate(scheduledFor.getDate() + 1);
+        scheduledFor.setHours(9, 0, 0, 0);
+        break;
+      case "tomorrow6pm":
+        scheduledFor = new Date(now);
+        scheduledFor.setDate(scheduledFor.getDate() + 1);
+        scheduledFor.setHours(18, 0, 0, 0);
+        break;
+      default:
+        return;
+    }
+
+    scheduleTweet(scheduledFor);
+  };
+
+  const handleCustomSchedule = () => {
+    if (!scheduleDate || !scheduleTime) return;
+    const [hours, minutes] = scheduleTime.split(":").map(Number);
+    const scheduledFor = new Date(scheduleDate);
+    scheduledFor.setHours(hours, minutes, 0, 0);
+    if (scheduledFor <= new Date()) {
+      toast.error("Cannot schedule in the past");
+      return;
+    }
+    scheduleTweet(scheduledFor);
+  };
+
+  const cancelScheduledTweet = async (id: string) => {
+    try {
+      await deleteTweet(id);
+      setScheduled(prev => prev.filter(t => t.id !== id));
+    } catch (error) {
+      console.error("Failed to cancel scheduled tweet:", error);
+    }
+  };
+
   const connectTwitter = () => {
-    // Store profile ID in cookie before redirecting
     document.cookie = `replyrocket_profile_id=${profile.id}; path=/; max-age=600`;
     window.location.href = "/api/twitter/auth";
   };
 
   const disconnectTwitter = async () => {
-    console.log("Disconnect clicked, profile.id:", profile.id);
     if (!confirm("Disconnect your X account?")) return;
 
     try {
-      console.log("Clearing credentials...");
       await clearTwitterCredentials(profile.id);
-      console.log("Credentials cleared, reloading...");
       window.location.reload();
     } catch (error) {
       console.error("Failed to disconnect Twitter:", error);
@@ -231,407 +400,328 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
   };
 
   const quickPrompts = [
-    { text: "Hook for my audience", icon: LightningIcon },
-    { text: "Engaging question", icon: HashIcon },
-    { text: "Share expertise tip", icon: SparkleIcon },
-    { text: "Thread opener", icon: PencilSimpleIcon },
+    { text: "Hook for my audience", icon: Zap },
+    { text: "Engaging question", icon: Hash },
+    { text: "Share expertise tip", icon: Sparkles },
+    { text: "Thread opener", icon: Pencil },
   ];
 
-  const tabs = [
-    { id: "compose", label: "Compose", icon: PencilSimpleIcon },
-    { id: "drafts", label: "Drafts", icon: FileIcon, count: drafts.length },
-    { id: "scheduled", label: "Scheduled", icon: CalendarIcon, count: scheduled.length },
-    { id: "posted", label: "Posted", icon: ClockIcon, count: posted.length },
-  ] as const;
+  const navItems = [
+    { id: "compose" as const, label: "Compose", icon: Pencil },
+    { id: "drafts" as const, label: "Drafts", icon: File, count: drafts.length },
+    { id: "scheduling" as const, label: "Scheduling", icon: CalendarIcon, count: scheduled.length },
+    { id: "posted" as const, label: "Posted", icon: Clock, count: posted.length },
+  ];
 
   return (
-    <div className="min-h-screen bg-background noise">
-      {/* Toast notifications */}
-      {postSuccess && (
-        <div className="fixed top-4 right-4 z-50 animate-fade-in-up flex items-center gap-3 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/20 shadow-lg">
-          <CheckCircleIcon className="h-5 w-5 text-green-500" weight="fill" />
-          <span className="text-sm text-green-500 font-medium">
-            {isTwitterConnected ? "Posted to X successfully!" : "Tweet saved!"}
-          </span>
-        </div>
-      )}
-      {postError && (
-        <div className="fixed top-4 right-4 z-50 animate-fade-in-up flex items-center gap-3 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 shadow-lg max-w-sm">
-          <WarningIcon className="h-5 w-5 text-destructive shrink-0" weight="fill" />
-          <span className="text-sm text-destructive font-medium">{postError}</span>
-        </div>
-      )}
-
-      {/* Ambient glow */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
-
-      <div className="relative mx-auto max-w-3xl px-6 py-8">
-        {/* Header */}
-        <header className="mb-8 animate-fade-in-up">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Avatar className="h-12 w-12 ring-2 ring-primary/20 ring-offset-2 ring-offset-background">
-                <AvatarImage src={isTwitterConnected ? profile.twitter_profile_image_url : profile.avatar_url} />
-                <AvatarFallback className="bg-primary/10 text-primary font-display text-lg">
-                  {(isTwitterConnected ? profile.twitter_name : profile.name)?.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h1 className="font-display text-2xl text-foreground">
-                    {isTwitterConnected ? profile.twitter_name : profile.name}
-                  </h1>
-                  {isTwitterConnected && profile.twitter_verified && (
-                    <svg viewBox="0 0 22 22" className="h-5 w-5 text-[#1d9bf0]" fill="currentColor">
-                      <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" />
-                    </svg>
-                  )}
+    <SidebarProvider defaultOpen={false}>
+      <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+        <SidebarHeader className="p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" tooltip="ReplyRocket">
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <Rocket className="size-4" />
                 </div>
-                <p className="text-sm text-muted-foreground">@{isTwitterConnected ? profile.twitter_username : profile.handle}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={isTwitterConnected ? disconnectTwitter : connectTwitter}
-                variant="outline"
-                size="sm"
-                className={`border-border/50 hover:border-foreground/50 hover:bg-foreground/5 transition-smooth ${
-                  isTwitterConnected ? "text-green-500 border-green-500/30 hover:border-red-500/50 hover:text-red-500 hover:bg-red-500/5" : ""
-                }`}
-              >
-                <XLogoIcon className="h-4 w-4 mr-2" weight="bold" />
-                {isTwitterConnected ? `@${profile.twitter_username}` : "Connect X"}
-              </Button>
-              <Button
-                onClick={onSignOut}
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <SignOutIcon className="h-4 w-4" />
-              </Button>
-            </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold">ReplyRocket</span>
+                  <span className="truncate text-xs text-muted-foreground">AI Composer</span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.id}>
+                  <SidebarMenuButton
+                    tooltip={item.label}
+                    isActive={activeTab === item.id}
+                    onClick={() => setActiveTab(item.id)}
+                  >
+                    <item.icon className="size-4" />
+                    <span>{item.label}</span>
+                    {item.count !== undefined && item.count > 0 && (
+                      <SidebarMenuBadge>{item.count}</SidebarMenuBadge>
+                    )}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter className="p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    tooltip={isTwitterConnected ? profile.twitter_name : profile.name}
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={isTwitterConnected ? profile.twitter_profile_image_url : profile.avatar_url} />
+                      <AvatarFallback className="rounded-lg bg-primary/10 text-primary">
+                        {(isTwitterConnected ? profile.twitter_name : profile.name)?.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">
+                        {isTwitterConnected ? profile.twitter_name : profile.name}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        @{isTwitterConnected ? profile.twitter_username : profile.handle}
+                      </span>
+                    </div>
+                    <ChevronsUpDown className="ml-auto size-4" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuItem onClick={isTwitterConnected ? disconnectTwitter : connectTwitter}>
+                    <XLogoIcon className="mr-2 h-4 w-4" weight="bold" />
+                    {isTwitterConnected ? `Disconnect @${profile.twitter_username}` : "Connect X Account"}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset>
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 h-4" />
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">
+              {navItems.find(item => item.id === activeTab)?.label}
+            </h1>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {isTwitterConnected && (
+              <Badge variant="outline" className="text-green-500 border-green-500/30">
+                <XLogoIcon className="h-3 w-3 mr-1" weight="bold" />
+                Connected
+              </Badge>
+            )}
           </div>
         </header>
 
-        {/* Navigation Tabs */}
-        <nav className="mb-6 animate-fade-in-up stagger-1">
-          <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg w-fit">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  relative flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium
-                  transition-smooth
-                  ${activeTab === tab.id
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                  }
-                `}
-              >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-                {'count' in tab && tab.count > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className={`
-                      ml-1 h-5 min-w-5 px-1.5 text-xs
-                      ${activeTab === tab.id ? "bg-primary/10 text-primary" : ""}
-                    `}
-                  >
-                    {tab.count}
-                  </Badge>
-                )}
-              </button>
-            ))}
-          </div>
-        </nav>
+        <div className="flex-1 overflow-auto p-6">
+          <div className="mx-auto max-w-2xl">
+            {/* Compose Tab */}
+            {activeTab === "compose" && (
+              <FieldGroup>
+                {/* Tweet Composer */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Compose Tweet</CardTitle>
+                    <CardDescription>Write your tweet and post it to X</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FieldGroup>
+                      <Field orientation="horizontal">
+                        <Avatar size="lg">
+                          <AvatarImage src={isTwitterConnected ? profile.twitter_profile_image_url : profile.avatar_url} />
+                          <AvatarFallback>
+                            {(isTwitterConnected ? profile.twitter_name : profile.name)?.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <FieldGroup>
+                          <Textarea
+                            id="tweet-content"
+                            placeholder="What's happening?"
+                            value={tweetContent}
+                            onChange={(e) => setTweetContent(e.target.value)}
+                          />
+                          <FieldDescription>
+                            <Badge variant={charCount > maxChars ? "destructive" : "secondary"}>
+                              {charCount}/{maxChars}
+                            </Badge>
+                          </FieldDescription>
+                        </FieldGroup>
+                      </Field>
 
-        {/* Main Content */}
-        {activeTab === "compose" && (
-          <div className="space-y-6">
-            {/* Compose Card */}
-            <div className="animate-fade-in-up stagger-2 bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
-              {/* Compose Area */}
-              <div className="p-6">
-                <div className="flex gap-4">
-                  {/* Avatar */}
-                  <Avatar className="h-11 w-11 shrink-0 ring-2 ring-primary/10 ring-offset-2 ring-offset-card">
-                    <AvatarImage src={isTwitterConnected ? profile.twitter_profile_image_url : profile.avatar_url} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-display">
-                      {(isTwitterConnected ? profile.twitter_name : profile.name)?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  {/* Input Area */}
-                  <div className="flex-1 min-w-0 pt-1">
-                    <textarea
-                      value={tweetContent}
-                      onChange={(e) => setTweetContent(e.target.value)}
-                      placeholder="What's happening?"
-                      className="min-h-[120px] w-full resize-none border-none bg-transparent p-0 text-[17px] leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0"
+                      {/* Image Preview */}
+                      {uploadedImage && (
+                        <Alert>
+                          <ImageIcon />
+                          <AlertTitle>Image attached</AlertTitle>
+                          <AlertDescription>
+                            <img
+                              src={uploadedImage}
+                              alt="Upload preview"
+                              className="max-h-48 rounded-lg object-cover mt-2"
+                            />
+                          </AlertDescription>
+                          <AlertAction>
+                            <Button size="icon-sm" variant="ghost" onClick={removeImage}>
+                              <X />
+                            </Button>
+                          </AlertAction>
+                        </Alert>
+                      )}
+                    </FieldGroup>
+                  </CardContent>
+                  <CardFooter className="gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
                     />
-                  </div>
-                </div>
+                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                      <ImageIcon />
+                      Add Image
+                    </Button>
+                    <Separator orientation="vertical" className="h-6" />
+                    <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tweetContent.trim()}>
+                      <Bookmark />
+                      Save Draft
+                    </Button>
+                    <Button size="lg" className="ml-auto" onClick={postTweet} disabled={!tweetContent.trim() || charCount > maxChars || isPosting}>
+                      {isPosting && <Spinner size="sm" />}
+                      Post
+                    </Button>
+                  </CardFooter>
+                </Card>
 
-                {/* Toolbar */}
-                <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/5 transition-smooth">
-                      <ImageIcon className="h-5 w-5" />
-                    </button>
-                    <button className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/5 transition-smooth">
-                      <GifIcon className="h-5 w-5" />
-                    </button>
-                    <button className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/5 transition-smooth">
-                      <HashIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    {/* Circular Progress */}
-                    <div className="relative h-8 w-8">
-                      <svg className="h-8 w-8 -rotate-90">
-                        <circle
-                          cx="16"
-                          cy="16"
-                          r="12"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          className="text-muted/50"
-                        />
-                        <circle
-                          cx="16"
-                          cy="16"
-                          r="12"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeDasharray={75.4}
-                          strokeDashoffset={75.4 - (75.4 * Math.min(charPercentage, 100)) / 100}
-                          className={`
-                            transition-all duration-300
-                            ${charPercentage > 100
-                              ? "text-destructive"
-                              : charPercentage > 90
-                                ? "text-amber-500"
-                                : "text-primary"
+                {/* AI Generator */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>AI Tweet Generator</CardTitle>
+                    <CardDescription>Describe what you want to tweet and I'll write it for you</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FieldGroup>
+                      <Field>
+                        <Input
+                          id="ai-prompt"
+                          placeholder="e.g., Share a tip about productivity..."
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              generateAiSuggestion();
                             }
-                          `}
-                          strokeLinecap="round"
+                          }}
+                          disabled={isGenerating}
                         />
-                      </svg>
-                      {charCount > 260 && (
-                        <span className={`
-                          absolute inset-0 flex items-center justify-center text-xs font-medium
-                          ${charCount > maxChars ? "text-destructive" : "text-muted-foreground"}
-                        `}>
-                          {maxChars - charCount}
-                        </span>
+                      </Field>
+
+                      <Field orientation="horizontal" className="justify-center">
+                        {quickPrompts.map((prompt) => (
+                          <Button
+                            key={prompt.text}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setAiPrompt(prompt.text)}
+                          >
+                            {prompt.text}
+                          </Button>
+                        ))}
+                      </Field>
+
+                      <Button onClick={generateAiSuggestion} disabled={!aiPrompt.trim() || isGenerating}>
+                        {isGenerating && <Spinner size="sm" />}
+                        {isGenerating ? "Generating..." : "Generate Tweet"}
+                      </Button>
+
+                      {/* AI Suggestion */}
+                      {aiSuggestion && (
+                        <Alert>
+                          <Sparkles />
+                          <AlertTitle>Generated Tweet</AlertTitle>
+                          <AlertDescription>{aiSuggestion}</AlertDescription>
+                          <AlertAction>
+                            <Button size="sm" variant="ghost" onClick={() => copyToClipboard(aiSuggestion, "suggestion")}>
+                              {copiedId === "suggestion" ? <Check /> : <Copy />}
+                            </Button>
+                          </AlertAction>
+                        </Alert>
                       )}
-                    </div>
 
-                    <div className="h-6 w-px bg-border/50" />
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={saveDraft}
-                      disabled={!tweetContent.trim()}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <BookmarkSimpleIcon className="h-4 w-4 mr-2" />
-                      Save
-                    </Button>
-
-                    <Button
-                      onClick={postTweet}
-                      disabled={!tweetContent.trim() || charCount > maxChars || isPosting}
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 glow-sm px-6"
-                    >
-                      {isPosting ? (
-                        <>
-                          <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                          Posting...
-                        </>
-                      ) : (
-                        <>
-                          <PaperPlaneTiltIcon className="h-4 w-4 mr-2" weight="fill" />
-                          {isTwitterConnected ? "Post to X" : "Post"}
-                        </>
+                      {aiSuggestion && (
+                        <Field orientation="horizontal">
+                          <Button variant="outline" onClick={() => setAiSuggestion("")}>
+                            <X />
+                            Discard
+                          </Button>
+                          <Button onClick={() => useSuggestion()}>
+                            <ArrowUp />
+                            Use This Tweet
+                          </Button>
+                        </Field>
                       )}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
+                    </FieldGroup>
+                  </CardContent>
+                </Card>
+              </FieldGroup>
+            )}
 
-            {/* AI Assistant Panel */}
-            <div className="animate-fade-in-up stagger-3 bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                    <SparkleIcon className="h-5 w-5 text-primary" weight="fill" />
-                  </div>
-                  <div>
-                    <h2 className="font-display text-lg text-foreground">AI Assistant</h2>
-                    <p className="text-sm text-muted-foreground">Let me help craft your message</p>
-                  </div>
-                </div>
-
-                {/* Quick Prompts */}
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {quickPrompts.map((prompt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setAiPrompt(prompt.text)}
-                      className={`
-                        flex items-center gap-2 px-3 py-2 rounded-lg text-sm
-                        border border-border/50 bg-background/50
-                        text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5
-                        transition-smooth
-                      `}
-                    >
-                      <prompt.icon className="h-4 w-4" />
-                      {prompt.text}
-                    </button>
-                  ))}
-                </div>
-
-                {/* AI Input */}
-                <div className="relative flex items-center gap-3 p-3 rounded-xl bg-background/80 border border-border/30">
-                  <input
-                    type="text"
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        generateAiSuggestion();
-                      }
-                    }}
-                    placeholder="Describe what you want to say..."
-                    className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
-                  />
-                  <Button
-                    size="icon"
-                    onClick={generateAiSuggestion}
-                    disabled={!aiPrompt.trim() || isGenerating}
-                    className="h-9 w-9 shrink-0 rounded-lg bg-primary hover:bg-primary/90"
-                  >
-                    {isGenerating ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                    ) : (
-                      <ArrowRightIcon className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-
-                {/* AI Suggestion */}
-                {aiSuggestion && (
-                  <div className="mt-4 p-4 rounded-xl bg-primary/5 border border-primary/10">
-                    <p className="text-foreground whitespace-pre-wrap leading-relaxed mb-4">
-                      {aiSuggestion}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={useSuggestion}
-                        className="bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        <CheckIcon className="h-4 w-4 mr-2" />
-                        Use this
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyToClipboard(aiSuggestion, "ai")}
-                        className="border-primary/20 hover:bg-primary/5"
-                      >
-                        {copiedId === "ai" ? (
-                          <CheckIcon className="h-4 w-4 mr-2 text-green-500" />
-                        ) : (
-                          <CopyIcon className="h-4 w-4 mr-2" />
-                        )}
-                        Copy
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setAiSuggestion("")}
-                        className="text-muted-foreground"
-                      >
-                        <XIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Drafts Tab */}
-        {activeTab === "drafts" && (
-          <div className="animate-fade-in-up stagger-2">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
-              </div>
-            ) : drafts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-                  <FileIcon className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-                <h3 className="font-display text-xl text-foreground mb-2">No drafts yet</h3>
-                <p className="text-muted-foreground max-w-sm">
-                  Start composing and save your ideas here for later
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {drafts.map((draft, i) => (
-                  <div
-                    key={draft.id}
-                    className={`
-                      p-5 bg-card rounded-xl border border-border/50
-                      hover:border-primary/20 hover:shadow-sm
-                      transition-smooth animate-fade-in-up
-                    `}
-                    style={{ animationDelay: `${i * 0.05}s` }}
-                  >
-                    <p className="text-foreground whitespace-pre-wrap leading-relaxed mb-4">
-                      {draft.content}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(draft.created_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <div className="flex items-center gap-2">
+            {/* Drafts Tab */}
+            {activeTab === "drafts" && (
+              <FieldGroup>
+                {isLoading ? (
+                  <Card>
+                    <CardContent className="py-20">
+                      <Spinner size="lg" />
+                    </CardContent>
+                  </Card>
+                ) : drafts.length === 0 ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>No drafts yet</CardTitle>
+                      <CardDescription>Start composing and save your ideas here for later</CardDescription>
+                    </CardHeader>
+                  </Card>
+                ) : (
+                  drafts.map((draft) => (
+                    <Card key={draft.id}>
+                      <CardContent>
+                        <FieldGroup>
+                          <Field>
+                            <FieldDescription>{draft.content}</FieldDescription>
+                          </Field>
+                        </FieldGroup>
+                      </CardContent>
+                      <CardFooter className="gap-2">
+                        <Badge variant="secondary">
+                          {new Date(draft.created_at).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Badge>
                         <Button
                           size="sm"
                           variant="ghost"
+                          className="ml-auto"
                           onClick={() => copyToClipboard(draft.content, draft.id)}
-                          className="text-muted-foreground hover:text-foreground"
                         >
-                          {copiedId === draft.id ? (
-                            <CheckIcon className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <CopyIcon className="h-4 w-4" />
-                          )}
+                          {copiedId === draft.id ? <Check /> : <Copy />}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => loadDraft(draft)}
-                          className="border-primary/20 hover:bg-primary/5 hover:border-primary/40"
                         >
                           Edit
                         </Button>
@@ -639,85 +729,208 @@ export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppPro
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDeleteDraft(draft.id)}
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/5"
                         >
-                          <TrashIcon className="h-4 w-4" />
+                          <Trash2 />
                         </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      </CardFooter>
+                    </Card>
+                  ))
+                )}
+              </FieldGroup>
             )}
-          </div>
-        )}
 
-        {/* Scheduled Tab */}
-        {activeTab === "scheduled" && (
-          <div className="animate-fade-in-up stagger-2 flex flex-col items-center justify-center py-20 text-center">
-            <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-              <CalendarIcon className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-            <h3 className="font-display text-xl text-foreground mb-2">No scheduled posts</h3>
-            <p className="text-muted-foreground max-w-sm">
-              Schedule your posts to publish at the perfect time
-            </p>
-          </div>
-        )}
+            {/* Scheduling Tab */}
+            {activeTab === "scheduling" && (
+              <FieldGroup>
+                {/* Schedule New Tweet */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Schedule Tweet</CardTitle>
+                    <CardDescription>Write your tweet and pick when to post it</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FieldGroup>
+                      <Field>
+                        <Textarea
+                          placeholder="What do you want to schedule?"
+                          value={scheduleContent}
+                          onChange={(e) => setScheduleContent(e.target.value)}
+                        />
+                        <FieldDescription>
+                          <Badge variant={scheduleContent.length > 280 ? "destructive" : "secondary"}>
+                            {scheduleContent.length}/280
+                          </Badge>
+                        </FieldDescription>
+                      </Field>
 
-        {/* Posted Tab */}
-        {activeTab === "posted" && (
-          <div className="animate-fade-in-up stagger-2">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
-              </div>
-            ) : posted.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-                  <CheckIcon className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-                <h3 className="font-display text-xl text-foreground mb-2">No posts yet</h3>
-                <p className="text-muted-foreground max-w-sm">
-                  Your published posts will appear here
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {posted.map((post, i) => (
-                  <div
-                    key={post.id}
-                    className={`
-                      p-5 bg-card rounded-xl border border-border/50
-                      transition-smooth animate-fade-in-up
-                    `}
-                    style={{ animationDelay: `${i * 0.05}s` }}
-                  >
-                    <p className="text-foreground whitespace-pre-wrap leading-relaxed mb-4">
-                      {post.content}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs">
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 text-green-600 dark:text-green-400">
-                        <CheckIcon className="h-3.5 w-3.5" weight="bold" />
-                        Posted
-                      </div>
-                      <span className="text-muted-foreground">
-                        {post.posted_at &&
-                          new Date(post.posted_at).toLocaleDateString("en-US", {
+                      <Field>
+                        <FieldLabel>Quick schedule</FieldLabel>
+                        <Field orientation="horizontal" className="justify-start">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleQuickSchedule("1hour")}
+                            disabled={!scheduleContent.trim()}
+                          >
+                            In 1 hour
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleQuickSchedule("3hours")}
+                            disabled={!scheduleContent.trim()}
+                          >
+                            In 3 hours
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleQuickSchedule("tomorrow9am")}
+                            disabled={!scheduleContent.trim()}
+                          >
+                            Tomorrow 9am
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleQuickSchedule("tomorrow6pm")}
+                            disabled={!scheduleContent.trim()}
+                          >
+                            Tomorrow 6pm
+                          </Button>
+                        </Field>
+                      </Field>
+
+                      <Field>
+                        <FieldLabel>Custom date & time</FieldLabel>
+                        <Field orientation="horizontal">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className="w-[200px] justify-start text-left font-normal">
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {scheduleDate ? format(scheduleDate, "PPP") : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={scheduleDate}
+                                onSelect={setScheduleDate}
+                                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Input
+                            type="time"
+                            value={scheduleTime}
+                            onChange={(e) => setScheduleTime(e.target.value)}
+                          />
+                          <Button
+                            onClick={handleCustomSchedule}
+                            disabled={!scheduleContent.trim() || !scheduleDate || !scheduleTime}
+                          >
+                            Schedule
+                          </Button>
+                        </Field>
+                      </Field>
+                    </FieldGroup>
+                  </CardContent>
+                </Card>
+
+                {/* Scheduled Tweets List */}
+                {scheduled.length === 0 ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>No scheduled tweets</CardTitle>
+                      <CardDescription>Schedule a tweet above to see it here</CardDescription>
+                    </CardHeader>
+                  </Card>
+                ) : (
+                  scheduled.map((tweet) => (
+                    <Card key={tweet.id}>
+                      <CardContent>
+                        <FieldGroup>
+                          <Field>
+                            <FieldDescription>{tweet.content}</FieldDescription>
+                          </Field>
+                        </FieldGroup>
+                      </CardContent>
+                      <CardFooter className="gap-2">
+                        <Badge variant="outline">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {tweet.scheduled_for && new Date(tweet.scheduled_for).toLocaleString("en-US", {
                             month: "short",
                             day: "numeric",
                             hour: "numeric",
                             minute: "2-digit",
                           })}
-                      </span>
-                    </div>
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto"
+                          onClick={() => cancelScheduledTweet(tweet.id)}
+                        >
+                          <X />
+                          Cancel
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))
+                )}
+              </FieldGroup>
+            )}
+
+            {/* Posted Tab */}
+            {activeTab === "posted" && (
+              <div>
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Spinner size="lg" />
                   </div>
-                ))}
+                ) : posted.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                      <Check className="h-8 w-8 text-primary/50" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-foreground mb-2">No posts yet</h3>
+                    <p className="text-muted-foreground max-w-sm">
+                      Your published posts will appear here
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {posted.map((post) => (
+                      <Card key={post.id}>
+                        <CardContent className="pt-4 pb-4">
+                          <p className="text-foreground whitespace-pre-wrap leading-relaxed mb-4">
+                            {post.content}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs">
+                            <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">
+                              <Check className="h-3 w-3 mr-1" />
+                              Posted
+                            </Badge>
+                            <span className="text-muted-foreground">
+                              {post.posted_at &&
+                                new Date(post.posted_at).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

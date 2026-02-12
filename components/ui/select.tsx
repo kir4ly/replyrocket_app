@@ -4,7 +4,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { CaretDownIcon, CheckIcon, CaretUpIcon } from "@phosphor-icons/react"
+import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 function Select({
   ...props
@@ -51,7 +51,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <CaretDownIcon className="text-muted-foreground size-4 pointer-events-none" />
+        <ChevronDownIcon className="text-muted-foreground size-4 pointer-events-none" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -150,7 +150,7 @@ function SelectScrollUpButton({
       className={cn("bg-popover z-10 flex cursor-default items-center justify-center py-1 [&_svg:not([class*='size-'])]:size-4", className)}
       {...props}
     >
-      <CaretUpIcon
+      <ChevronUpIcon
       />
     </SelectPrimitive.ScrollUpButton>
   )
@@ -166,7 +166,7 @@ function SelectScrollDownButton({
       className={cn("bg-popover z-10 flex cursor-default items-center justify-center py-1 [&_svg:not([class*='size-'])]:size-4", className)}
       {...props}
     >
-      <CaretDownIcon
+      <ChevronDownIcon
       />
     </SelectPrimitive.ScrollDownButton>
   )

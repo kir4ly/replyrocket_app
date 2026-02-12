@@ -15,40 +15,24 @@ export function ReplyRocket() {
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
 
   useEffect(() => {
+    // Safety timeout - always stop loading after 5 seconds max
+    const safetyTimeout = setTimeout(() => {
+      setIsLoading(false);
+    }, 5000);
+
     const loadProfile = async () => {
       try {
-        // Check for Google auth session first
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session?.user?.email) {
-          // User signed in with Google
-          const existingProfile = await getProfileByEmail(session.user.email);
-          if (existingProfile) {
-            localStorage.setItem(PROFILE_ID_KEY, existingProfile.id);
-            setProfile(existingProfile);
-          } else {
-            // New Google user - needs onboarding
-            setGoogleEmail(session.user.email);
-            setNeedsOnboarding(true);
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        // Check localStorage for existing profile
+        // Skip Google auth session check for now - just use localStorage
         const savedProfileId = localStorage.getItem(PROFILE_ID_KEY);
         if (savedProfileId) {
-          try {
-            const loadedProfile = await getProfile(savedProfileId);
-            setProfile(loadedProfile);
-          } catch (error) {
-            console.error("Failed to load profile:", error);
-            localStorage.removeItem(PROFILE_ID_KEY);
-          }
+          const loadedProfile = await getProfile(savedProfileId);
+          setProfile(loadedProfile);
         }
       } catch (error) {
-        console.error("Error loading profile:", error);
+        console.error("Failed to load profile:", error);
+        localStorage.removeItem(PROFILE_ID_KEY);
       } finally {
+        clearTimeout(safetyTimeout);
         setIsLoading(false);
       }
     };
@@ -108,7 +92,7 @@ export function ReplyRocket() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#16181c] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
       </div>
     );
@@ -151,7 +135,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SparkleIcon } from "@phosphor-icons/react";
+import { Sparkles } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 
 function GoogleOnboarding({
   email,
@@ -440,12 +425,12 @@ function GoogleOnboarding({
               >
                 {isAnalyzing ? (
                   <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white mr-2" />
+                    <Spinner size="sm" className="mr-2" />
                     Analyzing...
                   </>
                 ) : (
                   <>
-                    <SparkleIcon className="h-4 w-4 mr-2" weight="fill" />
+                    <Sparkles className="h-4 w-4 mr-2" />
                     Analyze My Style
                   </>
                 )}
@@ -459,7 +444,7 @@ function GoogleOnboarding({
                 className="flex-1"
               >
                 {isSubmitting ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                  <Spinner size="sm" />
                 ) : (
                   "Get Started"
                 )}
@@ -478,12 +463,13 @@ function GoogleOnboarding({
             ))}
           </div>
 
-          <button
+          <Button
+            variant="ghost"
             onClick={onSignOut}
-            className="mt-4 w-full text-center text-sm text-muted-foreground hover:text-foreground"
+            className="mt-4 w-full text-sm"
           >
             Sign out
-          </button>
+          </Button>
         </CardContent>
       </Card>
     </div>

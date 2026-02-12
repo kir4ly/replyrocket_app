@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Profile } from "@/lib/supabase";
-import { RocketLaunchIcon, EnvelopeIcon, SparkleIcon } from "@phosphor-icons/react";
+import { Rocket, Mail, Sparkles } from "lucide-react";
 
 interface OnboardingProps {
   onComplete: (profile: Omit<Profile, "id" | "created_at" | "updated_at">) => void;
@@ -158,11 +158,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
             {step === 2 ? (
-              <EnvelopeIcon className="h-7 w-7 text-primary" weight="fill" />
+              <Mail className="h-7 w-7 text-primary" />
             ) : step === 3 ? (
-              <SparkleIcon className="h-7 w-7 text-primary" weight="fill" />
+              <Sparkles className="h-7 w-7 text-primary" />
             ) : (
-              <RocketLaunchIcon className="h-7 w-7 text-primary" weight="fill" />
+              <Rocket className="h-7 w-7 text-primary" />
             )}
           </div>
           <CardTitle className="text-2xl">
@@ -278,7 +278,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                     </>
                   ) : (
                     <>
-                      <SparkleIcon className="h-4 w-4 mr-2" weight="fill" />
+                      <Sparkles className="h-4 w-4 mr-2" />
                       Analyze My Style
                     </>
                   )}

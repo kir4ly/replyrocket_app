@@ -21,7 +21,9 @@ import {
 } from "@/components/ui/select";
 import { Profile } from "@/lib/supabase";
 import { getProfileByEmail, loginWithEmail } from "@/lib/db";
-import { SparkleIcon, GoogleLogo } from "@phosphor-icons/react";
+import { Sparkles } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { GoogleLogo } from "@phosphor-icons/react"; // Keep for brand logo
 import { supabase } from "@/lib/supabase";
 
 interface AuthProps {
@@ -264,7 +266,7 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
                 className="w-full"
               >
                 {isSubmitting ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                  <Spinner size="sm" />
                 ) : (
                   "Sign In"
                 )}
@@ -272,7 +274,7 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
 
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-white/10" />
+                  <span className="w-full border-t border-border" />
                 </div>
                 <div className="relative flex justify-center text-xs">
                   <span className="bg-card px-2 text-muted-foreground">or</span>
@@ -292,16 +294,17 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
 
             <p className="mt-4 text-center text-sm text-muted-foreground">
               Don't have an account?{" "}
-              <button
+              <Button
+                variant="link"
+                className="h-auto p-0"
                 onClick={() => {
                   setMode("signup");
                   setStep(1);
                   setError("");
                 }}
-                className="text-primary hover:underline"
               >
                 Sign up
-              </button>
+              </Button>
             </p>
           </CardContent>
         </Card>
@@ -392,14 +395,14 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
               {error && (
                 <p className="text-sm text-destructive text-center">{error}</p>
               )}
-              <button
-                type="button"
+              <Button
+                variant="link"
+                className="h-auto p-0 text-sm"
                 onClick={sendVerificationEmail}
-                className="text-sm text-primary hover:underline"
                 disabled={isSubmitting}
               >
                 Resend code
-              </button>
+              </Button>
             </FieldGroup>
           )}
 
@@ -526,7 +529,7 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
                   className="w-full"
                 >
                   {isSubmitting ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                    <Spinner size="sm" />
                   ) : (
                     "Continue"
                   )}
@@ -534,7 +537,7 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-white/10" />
+                    <span className="w-full border-t border-border" />
                   </div>
                   <div className="relative flex justify-center text-xs">
                     <span className="bg-card px-2 text-muted-foreground">or</span>
@@ -588,12 +591,12 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
               >
                 {isAnalyzing ? (
                   <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white mr-2" />
+                    <Spinner size="sm" className="mr-2" />
                     Analyzing...
                   </>
                 ) : (
                   <>
-                    <SparkleIcon className="h-4 w-4 mr-2" weight="fill" />
+                    <Sparkles className="h-4 w-4 mr-2" />
                     Analyze My Style
                   </>
                 )}
@@ -607,7 +610,7 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
                 className="flex-1"
               >
                 {isSubmitting ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                  <Spinner size="sm" />
                 ) : (
                   "Get Started"
                 )}
@@ -628,15 +631,16 @@ export function Auth({ onLogin, onSignup }: AuthProps) {
 
           <p className="mt-4 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <button
+            <Button
+              variant="link"
+              className="h-auto p-0"
               onClick={() => {
                 setMode("login");
                 setError("");
               }}
-              className="text-primary hover:underline"
             >
               Sign in
-            </button>
+            </Button>
           </p>
         </CardContent>
       </Card>

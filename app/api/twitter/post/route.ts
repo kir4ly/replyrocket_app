@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 
 export async function POST(request: NextRequest) {
   try {
-    const { profileId, content } = await request.json();
+    const { profileId, content, imageBase64 } = await request.json();
 
     if (!profileId || !content) {
       return NextResponse.json(
@@ -71,8 +71,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Post the tweet
-    const result = await postTweet(accessToken, content);
+    // Post the tweet (with optional image)
+    const mediaData = imageBase64 ? Buffer.from(imageBase64, "base64") : undefined;
+    const result = await postTweet(accessToken, content, mediaData);
 
     return NextResponse.json({
       success: true,
