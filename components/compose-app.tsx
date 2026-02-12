@@ -30,13 +30,15 @@ import {
   LinkIcon,
   CheckCircleIcon,
   WarningIcon,
+  SignOutIcon,
 } from "@phosphor-icons/react";
 
 interface ComposeAppProps {
   profile: Profile;
+  onSignOut: () => void;
 }
 
-export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
+export function ComposeApp({ profile: initialProfile, onSignOut }: ComposeAppProps) {
   const [profile, setProfile] = useState(initialProfile);
   const [tweetContent, setTweetContent] = useState("");
   const [activeTab, setActiveTab] = useState<"compose" | "drafts" | "scheduled" | "posted">("compose");
@@ -299,6 +301,14 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
               >
                 <XLogoIcon className="h-4 w-4 mr-2" weight="bold" />
                 {isTwitterConnected ? `@${profile.twitter_username}` : "Connect X"}
+              </Button>
+              <Button
+                onClick={onSignOut}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <SignOutIcon className="h-4 w-4" />
               </Button>
             </div>
           </div>

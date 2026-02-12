@@ -126,7 +126,7 @@ export function ReplyRocket() {
     return <Auth onLogin={handleLogin} onSignup={handleSignup} />;
   }
 
-  return <ComposeApp profile={profile} />;
+  return <ComposeApp profile={profile} onSignOut={handleSignOut} />;
 }
 
 // Separate onboarding component for Google users
