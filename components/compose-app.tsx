@@ -194,12 +194,17 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
   };
 
   const disconnectTwitter = async () => {
+    console.log("Disconnect clicked, profile.id:", profile.id);
+    if (!confirm("Disconnect your X account?")) return;
+
     try {
+      console.log("Clearing credentials...");
       await clearTwitterCredentials(profile.id);
-      // Refresh the page to update the UI
+      console.log("Credentials cleared, reloading...");
       window.location.reload();
     } catch (error) {
       console.error("Failed to disconnect Twitter:", error);
+      alert("Failed to disconnect: " + (error as Error).message);
     }
   };
 
