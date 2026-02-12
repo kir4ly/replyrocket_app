@@ -16,38 +16,41 @@ export function ReplyRocket() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      // Check for Google auth session first
-      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        // Check for Google auth session first
+        const { data: { session } } = await supabase.auth.getSession();
 
-      if (session?.user?.email) {
-        // User signed in with Google
-        const existingProfile = await getProfileByEmail(session.user.email);
-        if (existingProfile) {
-          localStorage.setItem(PROFILE_ID_KEY, existingProfile.id);
-          setProfile(existingProfile);
-          setIsLoading(false);
-          return;
-        } else {
-          // New Google user - needs onboarding
-          setGoogleEmail(session.user.email);
-          setNeedsOnboarding(true);
+        if (session?.user?.email) {
+          // User signed in with Google
+          const existingProfile = await getProfileByEmail(session.user.email);
+          if (existingProfile) {
+            localStorage.setItem(PROFILE_ID_KEY, existingProfile.id);
+            setProfile(existingProfile);
+          } else {
+            // New Google user - needs onboarding
+            setGoogleEmail(session.user.email);
+            setNeedsOnboarding(true);
+          }
           setIsLoading(false);
           return;
         }
-      }
 
-      // Check localStorage for existing profile
-      const savedProfileId = localStorage.getItem(PROFILE_ID_KEY);
-      if (savedProfileId) {
-        try {
-          const loadedProfile = await getProfile(savedProfileId);
-          setProfile(loadedProfile);
-        } catch (error) {
-          console.error("Failed to load profile:", error);
-          localStorage.removeItem(PROFILE_ID_KEY);
+        // Check localStorage for existing profile
+        const savedProfileId = localStorage.getItem(PROFILE_ID_KEY);
+        if (savedProfileId) {
+          try {
+            const loadedProfile = await getProfile(savedProfileId);
+            setProfile(loadedProfile);
+          } catch (error) {
+            console.error("Failed to load profile:", error);
+            localStorage.removeItem(PROFILE_ID_KEY);
+          }
         }
+      } catch (error) {
+        console.error("Error loading profile:", error);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     loadProfile();
