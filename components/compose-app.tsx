@@ -193,6 +193,25 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
     window.location.href = "/api/twitter/auth";
   };
 
+  const disconnectTwitter = async () => {
+    try {
+      await updateProfile(profile.id, {
+        twitter_access_token: null,
+        twitter_refresh_token: null,
+        twitter_token_expires_at: null,
+        twitter_user_id: null,
+        twitter_username: null,
+        twitter_name: null,
+        twitter_profile_image_url: null,
+        twitter_verified: null,
+      });
+      // Refresh the page to update the UI
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to disconnect Twitter:", error);
+    }
+  };
+
   const loadDraft = (draft: Tweet) => {
     setTweetContent(draft.content);
     setActiveTab("compose");
@@ -274,24 +293,17 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {isTwitterConnected ? (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <CheckCircleIcon className="h-4 w-4 text-green-500" weight="fill" />
-                  <span className="text-sm text-green-500 font-medium">
-                    @{profile.twitter_username || "Connected"}
-                  </span>
-                </div>
-              ) : (
-                <Button
-                  onClick={connectTwitter}
-                  variant="outline"
-                  size="sm"
-                  className="border-border/50 hover:border-foreground/50 hover:bg-foreground/5 transition-smooth"
-                >
-                  <XLogoIcon className="h-4 w-4 mr-2" weight="bold" />
-                  Connect X
-                </Button>
-              )}
+              <Button
+                onClick={isTwitterConnected ? disconnectTwitter : connectTwitter}
+                variant="outline"
+                size="sm"
+                className={`border-border/50 hover:border-foreground/50 hover:bg-foreground/5 transition-smooth ${
+                  isTwitterConnected ? "text-green-500 border-green-500/30 hover:border-red-500/50 hover:text-red-500 hover:bg-red-500/5" : ""
+                }`}
+              >
+                <XLogoIcon className="h-4 w-4 mr-2" weight="bold" />
+                {isTwitterConnected ? `@${profile.twitter_username}` : "Connect X"}
+              </Button>
             </div>
           </div>
         </header>
