@@ -53,8 +53,10 @@ export async function postTweet(accessToken: string, text: string) {
   return client.v2.tweet(text);
 }
 
-// Get current user info
+// Get current user info with profile details
 export async function getCurrentUser(accessToken: string) {
   const client = getAuthenticatedClient(accessToken);
-  return client.v2.me();
+  return client.v2.me({
+    "user.fields": ["profile_image_url", "verified", "name", "username"],
+  });
 }

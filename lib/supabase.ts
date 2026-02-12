@@ -21,6 +21,9 @@ export type Profile = {
   twitter_token_expires_at?: string;
   twitter_user_id?: string;
   twitter_username?: string;
+  twitter_name?: string;
+  twitter_profile_image_url?: string;
+  twitter_verified?: boolean;
   created_at: string;
   updated_at: string;
 };

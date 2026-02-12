@@ -49,6 +49,9 @@ export async function GET(request: NextRequest) {
           twitter_token_expires_at: expiresAt,
           twitter_user_id: twitterUser.id,
           twitter_username: twitterUser.username,
+          twitter_name: twitterUser.name,
+          twitter_profile_image_url: twitterUser.profile_image_url?.replace("_normal", "_400x400"),
+          twitter_verified: twitterUser.verified || false,
         })
         .eq("id", profileId);
 
