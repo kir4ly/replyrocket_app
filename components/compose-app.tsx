@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Profile, Tweet } from "@/lib/supabase";
-import { createTweet, getTweets, deleteTweet, updateProfile } from "@/lib/db";
+import { createTweet, getTweets, deleteTweet, clearTwitterCredentials } from "@/lib/db";
 import {
   PencilSimpleIcon,
   FileIcon,
@@ -195,16 +195,7 @@ export function ComposeApp({ profile: initialProfile }: ComposeAppProps) {
 
   const disconnectTwitter = async () => {
     try {
-      await updateProfile(profile.id, {
-        twitter_access_token: null,
-        twitter_refresh_token: null,
-        twitter_token_expires_at: null,
-        twitter_user_id: null,
-        twitter_username: null,
-        twitter_name: null,
-        twitter_profile_image_url: null,
-        twitter_verified: null,
-      });
+      await clearTwitterCredentials(profile.id);
       // Refresh the page to update the UI
       window.location.reload();
     } catch (error) {

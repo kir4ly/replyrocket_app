@@ -66,6 +66,27 @@ export async function updateProfile(id: string, updates: Partial<Profile>) {
   return data as Profile;
 }
 
+export async function clearTwitterCredentials(id: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({
+      twitter_access_token: null,
+      twitter_refresh_token: null,
+      twitter_token_expires_at: null,
+      twitter_user_id: null,
+      twitter_username: null,
+      twitter_name: null,
+      twitter_profile_image_url: null,
+      twitter_verified: null,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as Profile;
+}
+
 // Tweet functions
 export async function createTweet(tweet: Omit<Tweet, "id" | "created_at" | "updated_at">) {
   const { data, error } = await supabase
